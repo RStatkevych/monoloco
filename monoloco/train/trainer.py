@@ -75,7 +75,7 @@ class Trainer:
 
         # Select the device
         use_cuda = torch.cuda.is_available()
-        self.device = torch.device("cuda:1" if use_cuda else "cpu")
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         print('Device: ', self.device)
         torch.manual_seed(r_seed)
         if use_cuda:
