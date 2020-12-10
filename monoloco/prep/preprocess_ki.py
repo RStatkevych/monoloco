@@ -76,7 +76,6 @@ class PreprocessKitti:
             cnt_gt += len(boxes_gt)
             cnt_files += 1
             cnt_files_ped += min(len(boxes_gt), 1)  # if no boxes 0 else 1
-
             # Find the annotations if exists
             try:
                 with open(os.path.join(self.dir_ann, basename + '.png.pifpaf.json'), 'r') as f:

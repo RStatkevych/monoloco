@@ -7,6 +7,7 @@ import os
 import glob
 import shutil
 from collections import defaultdict
+import time
 
 import numpy as np
 import torch
@@ -17,16 +18,17 @@ from ..eval.geom_baseline import compute_distance
 from ..utils import get_keypoints, pixel_to_camera, xyz_from_distance, get_calibration, open_annotations, split_training
 from .stereo_baselines import baselines_association
 from .reid_baseline import ReID, get_reid_features
-
+import torchviz
 
 class GenerateKitti:
 
-    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, stereo=True):
+    def __init__(self, model, dir_ann, p_dropout=0.2, n_dropout=0, stereo=True, activation='ReLU', n_stage=3, linear_size=256, linear_type='linear'):
 
         # Load monoloco
         use_cuda = torch.cuda.is_available()
         device = torch.device("cuda" if use_cuda else "cpu")
-        self.monoloco = MonoLoco(model=model, device=device, n_dropout=n_dropout, p_dropout=p_dropout)
+        self.monoloco = MonoLoco(model=model, device=device, n_dropout=n_dropout, p_dropout=p_dropout, activation=activation,
+                                 n_stage=n_stage, linear_size=linear_size, linear_type=linear_type)
         self.dir_ann = dir_ann
 
         # Extract list of pifpaf files in validation images
@@ -62,6 +64,7 @@ class GenerateKitti:
                 print("Created empty output directory for {}".format(key))
             print("\n")
 
+        time_dict = defaultdict(list)
         # Run monoloco over the list of images
         for basename in self.set_basename:
             path_calib = os.path.join(self.dir_kk, basename + '.txt')
@@ -72,7 +75,10 @@ class GenerateKitti:
             cnt_file += 1
 
             # Run the network and the geometric baseline
+            start = time.time()
             outputs, varss = self.monoloco.forward(keypoints, kk)
+            finish = time.time()
+            time_dict[len(boxes)].append(finish - start) 
             dds_geom = eval_geometric(keypoints, kk, average_y=0.48)
 
             # Save the file
@@ -93,6 +99,13 @@ class GenerateKitti:
                 for key in zzs:
                     path_txt[key] = os.path.join(dir_out[key], basename + '.txt')
                     save_txts(path_txt[key], all_inputs, zzs[key], all_params, mode='baseline')
+        path_to_file = os.path.join(dir_out['monoloco'], 'calculation_time.txt')
+        print(f"Saving to file {path_to_file}")
+        with open(path_to_file, 'w+') as fw:
+            for num, ls in sorted(time_dict.items(), key=lambda x: x[0]):
+                avg = sum(ls)/len(ls)
+                print(f"box num {num} - {sum(ls)/len(ls)} of {len(ls)}")
+                fw.write(f"{','.join([str(num),str(avg), str(len(ls))])}\n")
 
         print("\nSaved in {} txt {} annotations. Not found {} images".format(cnt_file, cnt_ann, cnt_no_file))
 
@@ -103,6 +116,7 @@ class GenerateKitti:
                     key, self.cnt_disparity[key] / cnt_ann * 100))
             print("Maximum possible stereo associations: {:.1f}%".format(self.cnt_disparity['max'] / cnt_ann * 100))
             print("Not found {}/{} stereo files".format(self.cnt_no_stereo, cnt_file))
+
 
     def _run_stereo_baselines(self, basename, boxes, keypoints, zzs, path_calib):
 

@@ -7,11 +7,18 @@ import logging
 from collections import defaultdict
 
 import torch
-
+import functools
 from ..utils import get_iou_matches, reorder_matches, get_keypoints, pixel_to_camera, xyz_from_distance
 from .process import preprocess_monoloco, unnormalize_bi, laplace_sampling
-from .architectures import LinearModel
-
+from .architectures import LinearModel, GELU, Swish
+import hiddenlayer as hl
+activations_dict = {
+    'ReLU': torch.nn.ReLU,
+    'GELU': GELU,
+    'Swish': Swish,
+    'leaky': torch.nn.LeakyReLU,
+    'prelu': torch.nn.PReLU
+}
 
 class MonoLoco:
 
@@ -21,7 +28,7 @@ class MonoLoco:
     LINEAR_SIZE = 256
     N_SAMPLES = 100
 
-    def __init__(self, model, device=None, n_dropout=0, p_dropout=0.2):
+    def __init__(self, model, device=None, n_dropout=0, p_dropout=0.2, n_stage=3, activation='ReLU', linear_size=LINEAR_SIZE, linear_type='linear'):
 
         if not device:
             self.device = torch.device('cpu')
@@ -33,8 +40,13 @@ class MonoLoco:
         # if the path is provided load the model parameters
         if isinstance(model, str):
             model_path = model
-            self.model = LinearModel(p_dropout=p_dropout, input_size=self.INPUT_SIZE, linear_size=self.LINEAR_SIZE)
+            activation = activations_dict.get(activation, torch.nn.ReLU)
+
+            self.model = LinearModel(p_dropout=p_dropout, input_size=self.INPUT_SIZE, linear_size=linear_size, activation_function=activation,
+                                     num_stage=n_stage, linear_type=linear_type)
             self.model.load_state_dict(torch.load(model_path, map_location=lambda storage, loc: storage))
+            transforms = [ hl.transforms.Prune('Constant') ] # Removes Constant nodes from graph.
+            print(self.model)
 
         # if the model is directly provided
         else:
@@ -65,6 +77,7 @@ class MonoLoco:
 
             #  Don't use dropout for the mean prediction
             outputs = self.model(inputs)
+
             outputs = unnormalize_bi(outputs)
         return outputs, varss
 

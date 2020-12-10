@@ -24,9 +24,11 @@ def show_results(dic_stats, show=False, save=False, stereo=False):
     y_max = 4.7
     xx = np.linspace(0, 60, 100)
     excl_clusters = ['all', '50', '>50', 'easy', 'moderate', 'hard']
-    clusters = tuple([clst for clst in dic_stats[phase]['monoloco'] if clst not in excl_clusters])
+    kv_items = list(dic_stats[phase].items())
+    kv_items = [(k, v) for k, v in kv_items if 'merged' not in k]
+    clusters = tuple([clst for clst in kv_items[0][1] if clst not in excl_clusters])
     yy_gender = get_task_error(xx)
-
+    labels = ['Improved Monoloco', 'Original Monoloco']
     styles = printing_styles(stereo)
     for idx_style, (key, style) in enumerate(styles.items()):
         plt.figure(idx_style)
@@ -35,13 +37,15 @@ def show_results(dic_stats, show=False, save=False, stereo=False):
         plt.ylim(y_min, y_max)
         plt.xlabel("Ground-truth distance [m]")
         plt.ylabel("Average localization error [m]")
-        for idx, method in enumerate(style['methods']):
-            errs = [dic_stats[phase][method][clst]['mean'] for clst in clusters]
-            assert errs, "method %s empty" % method
+        for idx, _ in enumerate(style['methods']):
+            if idx >= len(kv_items):
+                break
+            errs = [kv_items[idx][1][clst]['mean'] for clst in clusters]
             xxs = get_distances(clusters)
 
             plt.plot(xxs, errs, marker=style['mks'][idx], markersize=style['mksizes'][idx], linewidth=style['lws'][idx],
-                     label=style['labels'][idx], linestyle=style['lstyles'][idx], color=style['colors'][idx])
+                     label=labels[idx], linestyle=style['lstyles'][idx], color=style['colors'][idx])
+                     #list(dic_stats[phase].items())[idx][0])
         plt.plot(xx, yy_gender, '--', label="Task error", color='lightgreen', linewidth=2.5)
         if key == 'stereo':
             yy_stereo = get_pixel_error(xx)

@@ -10,7 +10,7 @@ import logging
 import datetime
 from collections import defaultdict
 from itertools import chain
-
+import time
 from tabulate import tabulate
 
 from ..utils import get_iou_matches, get_task_error, get_pixel_error, check_conditions, get_category, split_training, \
@@ -24,18 +24,19 @@ class EvalKitti:
     logger = logging.getLogger(__name__)
     CLUSTERS = ('easy', 'moderate', 'hard', 'all', '6', '10', '15', '20', '25', '30', '40', '50', '>50')
     ALP_THRESHOLDS = ('<0.5m', '<1m', '<2m')
-    METHODS_MONO = ['m3d', 'monodepth', '3dop', 'monoloco']
+    #METHODS_MONO = ['m3d', 'monodepth', '3dop', 'monoloco']
+    METHODS_MONO = ['monoloco']
     METHODS_STEREO = ['ml_stereo', 'pose', 'reid']
     BASELINES = ['geometric', 'task_error', 'pixel_error']
     HEADERS = ('method', '<0.5', '<1m', '<2m', 'easy', 'moderate', 'hard', 'all')
     CATEGORIES = ('pedestrian',)
 
     def __init__(self, thresh_iou_monoloco=0.3, thresh_iou_base=0.3, thresh_conf_monoloco=0.3, thresh_conf_base=0.3,
-                 verbose=False, stereo=False):
+                 verbose=False, stereo=False, methods=METHODS_MONO):
 
         self.main_dir = os.path.join('data', 'kitti')
         self.dir_gt = os.path.join(self.main_dir, 'gt')
-        self.methods = self.METHODS_MONO
+        self.methods = methods
         self.stereo = stereo
         if self.stereo:
             self.methods.extend(self.METHODS_STEREO)
@@ -77,10 +78,13 @@ class EvalKitti:
             self.dic_stats = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float))))
             self.dic_cnt = defaultdict(int)
             self.cnt_gt = 0
-
+            amount_of_files = len(self.set_val)
+            print(self.set_val)
             # Iterate over each ground truth file in the training set
-            for name in self.set_val:
+            for index, name in enumerate(self.set_val):
+                print(f"processing {name} ({index} of {amount_of_files})")
                 path_gt = os.path.join(self.dir_gt, name)
+
 
                 # Iterate over each line of the gt file and save box location and distances
                 out_gt = parse_ground_truth(path_gt, category)
@@ -93,7 +97,9 @@ class EvalKitti:
                         dir_method = os.path.join(self.main_dir, method)
                         assert os.path.exists(dir_method), "directory of the method %s does not exists" % method
                         path_method = os.path.join(dir_method, name)
-                        methods_out[method] = self._parse_txts(path_method, category, method=method)
+                        parsed_text = self._parse_txts(path_method, category, method=method)
+                        print(f"Output {path_method}: {parsed_text}")
+                        methods_out[method] = parsed_text
 
                         # Compute the error with ground truth
                         self._estimate_error(out_gt, methods_out[method], method=method)
@@ -110,6 +116,33 @@ class EvalKitti:
             # Show statistics
             print('\n' + category.upper() + ':')
             self.show_statistics()
+
+        self._eval_prediction_speed()
+        
+
+    def _eval_prediction_speed(self):
+        method_vals = defaultdict(list)
+        for method in self.methods:
+            dir_method = os.path.join(self.main_dir, method)
+            assert os.path.exists(dir_method), "directory of the method %s does not exists" % method
+            print(f"Processing method {method}")
+            metrics = []
+            with open(os.path.join(dir_method, 'calculation_time.txt')) as fr:
+                for line in fr:
+                    data = line.strip().split(',')
+                    print(data)
+                    if data:
+                        metrics.append(data)
+            method_vals[method] = metrics
+
+        print(f"Execution time evaluation", method_vals)
+        total_calc_time = os.path.join(self.main_dir, f'calc_time-{str(int(time.time()))}.txt')
+        print(f"Save execution time: {total_calc_time}")
+        with open(total_calc_time, 'w+') as fw:
+            for k, v in method_vals.items():
+                line = [k] + [item[1] for item in v]
+                print('\t'.join(line))
+                fw.write(f'{",".join(line)}\n')
 
     def printer(self, show, save):
         if save or show:
@@ -187,6 +220,8 @@ class EvalKitti:
 
         # Find IoU matches
         matches = []
+        if 'monoloco' not in methods_out:
+            return
         boxes_monoloco = methods_out['monoloco'][0]
         matches_monoloco = get_iou_matches(boxes_monoloco, boxes_gt, self.dic_thresh_iou['monoloco'])
 
@@ -332,17 +367,19 @@ class EvalKitti:
 
     def summary_table(self, all_methods):
         """Tabulate table for ALP and ALE metrics"""
-
+        print(all_methods, self.errors)
+        for k in all_methods:
+            print(self.errors[k])
         alp = [[str(100 * average(self.errors[key][perc]))[:5]
                 for perc in ['<0.5m', '<1m', '<2m']]
-               for key in all_methods]
+               for key in all_methods if key not in ['task_error', 'pixel_error', 'geometric']]
 
         ale = [[str(self.dic_stats['test'][key + '_merged'][clst]['mean'])[:4] + ' (' +
                 str(self.dic_stats['test'][key][clst]['mean'])[:4] + ')'
                 for clst in self.CLUSTERS[:4]]
-               for key in all_methods]
+               for key in all_methods if key not in ['task_error', 'pixel_error', 'geometric']]
 
-        results = [[key] + alp[idx] + ale[idx] for idx, key in enumerate(all_methods)]
+        results = [[key] + alp[idx] + ale[idx] for idx, key in enumerate(all_methods) if key not in ['task_error', 'pixel_error', 'geometric']]
         print(tabulate(results, headers=self.HEADERS))
         print('-' * 90 + '\n')
 

@@ -17,8 +17,8 @@ def predict(args):
 
     # load pifpaf and monoloco models
     pifpaf = PifPaf(args)
-    monoloco = MonoLoco(model=args.model, device=args.device, n_dropout=args.n_dropout, p_dropout=args.dropout)
-
+    num_of_images = len(args.images)
+    print(f"Num of images to process: {num_of_images}")
     # data
     data = ImageList(args.images, scale=args.scale)
     data_loader = torch.utils.data.DataLoader(
@@ -49,6 +49,7 @@ def predict(args):
             if 'monoloco' in args.networks:
                 im_size = (float(image.size()[1] / args.scale),
                            float(image.size()[0] / args.scale))  # Width, Height (original)
+                monoloco = MonoLoco(model=args.model, device=args.device, n_dropout=args.n_dropout, p_dropout=args.dropout)
 
                 # Extract calibration matrix and ground truth file if present
                 with open(image_path, 'rb') as f:
@@ -61,6 +62,7 @@ def predict(args):
 
                 # Preprocess pifpaf outputs and run monoloco
                 boxes, keypoints = preprocess_pifpaf(pifpaf_out, im_size)
+                print(boxes, keypoints)
                 outputs, varss = monoloco.forward(keypoints, kk)
                 dic_out = monoloco.post_process(outputs, varss, boxes, keypoints, kk, dic_gt)
 

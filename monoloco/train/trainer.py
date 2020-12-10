@@ -23,14 +23,20 @@ from torch.optim import lr_scheduler
 from .datasets import KeypointsDataset
 from ..network import LaplacianLoss
 from ..network.process import unnormalize_bi
-from ..network.architectures import LinearModel
+from ..network.architectures import LinearModel, GELU, Swish
 from ..utils import set_logger
-
+activations_dict = {
+    'ReLU': nn.ReLU,
+    'GELU': GELU,
+    'Swish': Swish,
+    'leaky': nn.LeakyReLU,
+    'prelu': nn.PReLU
+}
 
 class Trainer:
     def __init__(self, joints, epochs=100, bs=256, dropout=0.2, lr=0.002,
                  sched_step=20, sched_gamma=1, hidden_size=256, n_stage=3, r_seed=1, n_samples=100,
-                 baseline=False, save=False, print_loss=False):
+                 baseline=False, save=False, print_loss=False, activation_function='ReLU', linear_type='linear'):
         """
         Initialize directories, load the data and parameters for the training
         """
@@ -52,6 +58,7 @@ class Trainer:
         self.lr = lr
         self.sched_step = sched_step
         self.sched_gamma = sched_gamma
+        self.activation_function = activations_dict.get(activation_function, nn.ReLU)
         n_joints = 17
         input_size = n_joints * 2
         self.output_size = 2
@@ -110,7 +117,8 @@ class Trainer:
         self.logger.info('Sizes of the dataset: {}'.format(self.dataset_sizes))
         print(">>> creating model")
         self.model = LinearModel(input_size=input_size, output_size=self.output_size, linear_size=hidden_size,
-                                 p_dropout=dropout, num_stage=self.n_stage)
+                                 p_dropout=dropout, num_stage=self.n_stage, activation_function=self.activation_function,
+                                 linear_type=linear_type)
         self.model.to(self.device)
         print(">>> total params: {:.2f}M".format(sum(p.numel() for p in self.model.parameters()) / 1000000.0))
 

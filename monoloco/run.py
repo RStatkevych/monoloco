@@ -68,6 +68,8 @@ def cli():
     training_parser.add_argument('--hyp', help='run hyperparameters tuning', action='store_true')
     training_parser.add_argument('--multiplier', type=int, help='Size of the grid of hyp search', default=1)
     training_parser.add_argument('--r_seed', type=int, help='specify the seed for training and hyp tuning', default=1)
+    training_parser.add_argument('--activation', help='monoloco streaming', default='ReLU')
+    training_parser.add_argument('--linear_type', default='linear')
 
     # Evaluation
     eval_parser.add_argument('--dataset', help='datasets to evaluate, kitti or nuscenes', default='kitti')
@@ -84,7 +86,9 @@ def cli():
     eval_parser.add_argument('--save', help='whether to save statistic graphs', action='store_true')
     eval_parser.add_argument('--verbose', help='verbosity of statistics', action='store_true')
     eval_parser.add_argument('--stereo', help='include stereo baseline results', action='store_true')
-
+    eval_parser.add_argument('--methods', type=str)
+    eval_parser.add_argument('--activation', help='monoloco streaming', default='ReLU')
+    eval_parser.add_argument('--linear_type', default='linear')
     args = parser.parse_args()
     return args
 
@@ -121,7 +125,9 @@ def main():
             training = Trainer(joints=args.joints, epochs=args.epochs, bs=args.bs,
                                baseline=args.baseline, dropout=args.dropout, lr=args.lr, sched_step=args.sched_step,
                                n_stage=args.n_stage, sched_gamma=args.sched_gamma, hidden_size=args.hidden_size,
-                               r_seed=args.r_seed, save=args.save)
+                               r_seed=args.r_seed, save=args.save, activation_function=args.activation,
+                               linear_type=args.linear_type)
+
 
             _ = training.train()
             _ = training.evaluate()
@@ -135,18 +141,23 @@ def main():
         if args.generate:
             from .eval import GenerateKitti
             kitti_txt = GenerateKitti(args.model, args.dir_ann, p_dropout=args.dropout, n_dropout=args.n_dropout,
-                                      stereo=args.stereo)
+                                      stereo=args.stereo, activation=args.activation, linear_size=args.hidden_size,
+                                      n_stage=args.n_stage,linear_type=args.linear_type)
             kitti_txt.run()
 
         if args.dataset == 'kitti':
             from .eval import EvalKitti
-            kitti_eval = EvalKitti(verbose=args.verbose, stereo=args.stereo)
+            if args.generate:
+                kitti_eval = EvalKitti(verbose=args.verbose, stereo=args.stereo)
+            else:
+                methods = args.methods.split(',')
+                kitti_eval = EvalKitti(verbose=args.verbose, stereo=args.stereo, methods=methods)
             kitti_eval.run()
             kitti_eval.printer(show=args.show, save=args.save)
 
         if 'nuscenes' in args.dataset:
             from .train import Trainer
-            training = Trainer(joints=args.joints)
+            training = Trainer(joints=args.joints, activation_function=args.activation)
             _ = training.evaluate(load=True, model=args.model, debug=False)
 
     else:

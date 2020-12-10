@@ -9,3 +9,4 @@ build/
 *.egg-info
 tests/*.png
 kitti-eval/*
+venv/
